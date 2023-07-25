@@ -1,0 +1,24 @@
+{
+  "name": "docker",
+  "version": "1.0.0",
+  "description": "* o **Docker** é um software que **reduz a complexidade de setup** de aplicações;\r * Onde **configuramos containers**, que são como servidores para rodar nossas aplicações;\r * Com facilidade, podemos criar **ambientes independentes** e que funcionam em diversos SO's;\r * E ainda deixa os projetos **performáticos**;",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Victor-Palha/Docker.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Victor-Palha/Docker/issues"
+  },
+  "homepage": "https://github.com/Victor-Palha/Docker#readme",
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

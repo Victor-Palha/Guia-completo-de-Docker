@@ -208,3 +208,208 @@ ecc1f9240d54   nginx                       "/docker-entrypoint.…"   21 minutes
 e7ad4bd564fb   ubuntu:latest               "/bin/bash"              About an hour ago   Exited (127) About an hour ago                            bold_elbakyan
 8cd0a9f9675a   docker/whalesay             "cowsay Hello-World"     2 hours ago         Exited (0) 2 hours ago                                   hungry_chaum
 ```
+
+# Imagens
+## O que é uma imagem?
+* Imagens **são originadas de arquivos que programamos** para que o Docker crie uma estrutura que execute determinadas ações em containers;
+* Elas contém informações como: imagens base, diretório base, comandos a serem executados, porta da aplicação e etc;
+* Ao rodar um container baseado na imagem, **as instruções serão executadas em camadas**;
+
+## Como escolher uma boa 
+* Podemos fazer download das imagens em: [Docker Hub](https://hub.docker.com/);
+* Porém **qualquer um pode fazer upload de uma imagem**, isso é um problema;
+* Devemos então nos atentar as **imagens oficiais**;
+* Outro parâmetro interessante é a **quantidade de downloads** e a **quantidade de stars**;
+
+## Criando uma imagem
+* Para criar uma imagem vamos precisar de um arquivo _Dockerfile_ em uma pasta que ficará o projeto;
+* Este arquivo vai precisar de algumas instruções para poder ser executado;
+* `FROM`: imagem base;
+* `WORKDIR`: diretório da aplicação;
+* `EXPOSE`: porta da aplicação;
+* `COPY`: quais arquivos precisam ser copiados para o container;
+
+```bash
+# Vamos criar uma aplicação simples em Node.js
+# Crie uma pasta e abra seu editor de código e siga as instruções abaixo:
+npm init -y
+npm install express
+touch app.js
+```
+```js
+// Dentro do app.js
+const express = require('express')
+
+const app = express()
+
+app.get('/', (req, res)=>{
+    res.send('Hello World from docker')
+})
+
+app.listen(8080, (req, res)=>{
+    console.log('Server running on port 8080')
+})
+```
+* Aqui criamos um simples servidor web com express, que retorna uma mensagem na rota raiz;
+* Vamos criar nossa imagem Docker agora:
+```bash
+touch Dockerfile
+```
+Imagem:
+```Dockerfile
+FROM node               <= Imagem base
+
+WORKDIR /app            <= Diretório da aplicação
+
+COPY package*.json .    <= Copiando arquivos package.json e package-lock.json para o diretório da aplicação
+
+RUN npm install         <= Instalando dependências
+
+COPY . .                <= Copiando arquivos para o container 
+
+EXPOSE 8080             <= Porta da aplicação
+
+CMD ["node", "app.js"]  <= Comando a ser executado
+
+```
+
+## Executando uma imagem
+* Para executar a imagem primeiramente **vamos precisar fazer o build**;
+* O comando é `docker build <diretório do Dockerfile>`;
+* Podemos utilizar a flag `-t` para **definir um nome para a imagem**;
+* Depois vamos utilizar o `docker run imagem` para executar a imagem;
+
+```bash
+docker build -t express_server . #considerando que o terminal está aberto no mesmo diretório do Dockerfile
+
+docker run -p 3000:8080 express_server
+```
+
+## Alterando uma imagem
+* Sempre que alteramos o código de uma imagem **vamos precisar fazer o build novamente**;
+* Para o Docker é como se fosse **uma imagem completamente nova**;
+* Após fazer o build vamos executá-la por outro id único criada com o `docker run`;
+
+## Camadas das imagens
+* As imagens do Docker são divididas em **camadas** (layers);
+* Cada instrução no Dockerfile **representa uma layer**;
+* Quando algo é atualizado **apenas as layers depois da linha atualizada são refeitas**;
+* O resto permanece em cache, tornando o **build mais rápido**;
+
+## Download de imagens
+* Podemos **fazer o download de alguma imagem** do hub e deixa-la disponível em nosso ambiente;
+* Vamos utilizar o comando `docker pull <imagem>`;
+* Desta maneira, caso se use em outro container, **a imagem já estará pronta para ser utilizada**;
+
+## Aprender mais sobre os comandos
+* Todos comando no docker tem acesso a uma **flag --help**;
+* Utilizando desta maneira, **podemos ver todas as opções disponíveis nos comandos**;
+* Para relembrar algo ou executar uma tarefa diferente com o mesmo;
+```bash
+#exemplo
+docker run --help
+```
+
+## Multiplas aplicações, mesmo container
+* Podemos inicializar **vários containers com a mesma imagem**;
+* As aplicações funcionarão em paralelo;
+* Para testar isso, podemos determinar uma **porta diferente** para cada uma, e rodar no **modo detached**;
+
+## Alterando o nome da imagem e tag
+* Podemos **nomear a imagem** que criamos;
+* Vamos utilizar o comando `docker tag <nome>` para isso;
+* Também podemos **modificar a tag**, que seria como uma versão da imagem, semelhante ao git;
+* Para inserir a tag utilizamos: `docker tag <nome>:<tag>`;
+```bash
+docker images
+# output
+REPOSITORY           TAG       IMAGE ID       CREATED          SIZE  
+express_server       latest    7ae03f51fdc1   39 minutes ago   1.1GB 
+nginx                latest    021283c8eb95   3 weeks ago      187MB 
+ubuntu               latest    5a81c4b8502e   3 weeks ago      77.8MB
+bitnami/postgresql   latest    fad69a0c4877   3 months ago     273MB 
+docker/whalesay      latest    6b362a9f73eb   8 years ago      247MB
+
+docker tag express_server:latest express_server:1.0.0
+
+docker images
+# output
+REPOSITORY           TAG       IMAGE ID       CREATED          SIZE  
+express_server       1.0.0     7ae03f51fdc1   40 minutes ago   1.1GB 
+express_server       latest    7ae03f51fdc1   40 minutes ago   1.1GB 
+nginx                latest    021283c8eb95   3 weeks ago      187MB 
+ubuntu               latest    5a81c4b8502e   3 weeks ago      77.8MB
+bitnami/postgresql   latest    fad69a0c4877   3 months ago     273MB 
+docker/whalesay      latest    6b362a9f73eb   8 years ago      247MB
+```
+
+## Removendo imagens
+* Assim como nos containers, **podemos remover imagens com um comando**;
+* O comando é `docker rmi <id ou nome da imagem>`;
+* Imagens que estão sendo utilizadas por um container, apresentarão um erro no terminal;
+* Podemos utilizar a **flag -f** para forçar a remoção;
+```bash
+docker images
+#output
+REPOSITORY           TAG       IMAGE ID       CREATED          SIZE  
+express_server       1.0.0     7ae03f51fdc1   47 minutes ago   1.1GB 
+express_server       latest    7ae03f51fdc1   47 minutes ago   1.1GB 
+nginx                latest    021283c8eb95   3 weeks ago      187MB 
+ubuntu               latest    5a81c4b8502e   3 weeks ago      77.8MB
+bitnami/postgresql   latest    fad69a0c4877   3 months ago     273MB 
+docker/whalesay      latest    6b362a9f73eb   8 years ago      247MB
+
+docker rmi -f 7ae03f51fdc1
+```
+
+## Removendo imagens e containers
+* Com o comando `docker system prude`;
+* Podemos **remover imagens, containers e networks** não utilizados;
+* O sistema irá exigir uma confirmação para realizar a remoção;
+```bash
+docker system prude
+```
+
+## Removendo container após utilizar
+* Um container pode ser automaticamente deletado após sua utilização;
+* Para isso utilizamos a flag `--rm` no comando `docker run`;
+* O comando `docker run --rm <imagem>` irá executar o container e logo após deletá-lo;
+* Desta maneira **não precisamos nos preocupar em deletar o container** após sua utilização;
+```bash
+docker run --rm ubuntu
+```
+
+## Copiando arquivos entre containers
+* Para cópia de arquivos entre containers utilizamos o comando: `docker cp`;
+* Pode ser utilizado para copiar um arquivo de um diretório para um container;
+* Ou de um container para um diretório;
+* Abra dois terminais para o teste:
+```bash
+# docker promp
+docker run -it --rm ubuntu
+```
+```bash
+# seu Pc promp
+mdkir testeToCopy
+cd testeToCopy
+touch teste.txt
+cd ..
+
+docker ps
+# output
+CONTAINER ID   IMAGE     COMMAND       CREATED         STATUS         PORTS     NAMES
+d5c6e1111edf   ubuntu    "/bin/bash"   2 minutes ago   Up 2 minutes             musing_gould
+
+docker cp ./testToCopy d5c6e1111edf:.
+# Explicações:
+# ./testToCopy -> diretório que queremos copiar
+# d5c6e1111edf -> id do container que queremos copiar
+# . -> diretório que queremos colar
+
+# Podemos também copiar arquivos de um container para um diretório
+docker cp d5c6e1111edf:./testToCopy/test.txt .
+# Explicações:
+# d5c6e1111edf -> id do container que queremos copiar
+# ./testToCopy/test.txt -> arquivo que queremos copiar
+# . -> diretório que queremos colar
+```
