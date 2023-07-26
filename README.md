@@ -413,3 +413,59 @@ docker cp d5c6e1111edf:./testToCopy/test.txt .
 # ./testToCopy/test.txt -> arquivo que queremos copiar
 # . -> diretório que queremos colar
 ```
+
+## Verificar informações de processamento
+* Para verificar dados de execução de um container utilizamos o comando `docker top <id ou nome do container>`;
+* Desta maneira temos acesso a quando ele foi iniciado, id do processo, descrição do CMD;
+
+## Verificar dados de um container
+* Para verificar diversas informações como: **id, data de criação, imagem e muito mais**;
+* Utilizamos o comando `docker inspect <id ou nome do container>`;
+* Desta maneira temos acesso a diversas informações sobre o container;
+
+## Verificar processamento
+* Para verificar os processos que estão sendo executados em um container, utilizamos o comando: `docker stats`;
+* Desta maneira temos acesso ao andamento do processamento e memória utilizada;
+
+## Autenticação no Docker Hub
+* Para concluir esta etapa, vamos precisar de uma conta no Docker Hub;
+* Para autenticar-se pelo terminal vamos utilizar o comando `docker login`;
+* E então inserir o usuário e senha;
+* Agora podemos **enviar nossas próprias imagens** para o HUB.
+tza2wv9yXW6XzWM
+```bash
+docker login
+## output
+Login with your Docker ID to push and pull images from Docker Hub. If you don't have a Docker ID, head over to https://hub.docker.com to create one.
+Username: <seu usuário>
+Password: <sua senha>
+```
+
+## Enviando imagem para o Docker Hub
+* Para enviar uma imagem nossa ao Docker Hub utilizamos o comando `docker push <imagem>`;
+* Porém antes vamos precisar **criar o repositório** para a imagem no site do Hub;
+* Após criar o repositório, vamos precisar **renomear a imagem** para que ela seja enviada ao repositório correto;
+    * `docker tag <imagem> <usuário>/<nome do repositório>:<tag>`;
+* Também será necessário **estar autenticado**;
+* Depois de enviar a imagem, podemos baixar ela com o comando `docker pull <imagem>`;
+
+
+## Logout do Docker Hub
+* Para remover a conexão entre nossa máquina e o Docker Hub, vamos utilizar o comando `docker logout`;
+* Agora não podemos mais enviar imagens, pois não estamos autenticados;
+```bash
+docker logout
+```
+
+## Enviando atualização de imagem
+* Para enviar uma atualização **vamos primeiramente fazer o build**;
+* **Trocando a tag da imagem** para a nova versão;
+* **Depois vamos fazer um push** novamente para o repositório;
+* Assim todas as versões estarão disponíveis para serem utilizadas
+
+## Baixando e utilizando a imagem
+* Para baixar a imagem podemos utilizar o comando `docker pull <imagem>`;
+* Depois de baixar, podemos utilizar o comando `docker run <imagem>`;
+* Desta maneira a imagem será executada em um container;
+
+# Volumes
