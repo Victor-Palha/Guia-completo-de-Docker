@@ -753,3 +753,289 @@ local     phpvolume
 * Podemos criar um volume que tem **apenas permissão de leitura**, isso é útil em algumas aplicações;
 * Para realizar esta configuração utilizar o comando: `docker run -v volume:/data:ro`;
 * Este **:ro** é a abreviação de **read only**;
+
+# Networks
+## O que são Networks no Docker?
+* **Uma forma de gerenciar a conexão do Docker** com outras plataformas ou até mesmo entre containers;
+* As redes ou networks são **criadas separadas do container**, como os volumes;
+* Além disso existem alguns **drivers de rede**, que veremos em seguida;
+* Uma rede deixa muito simples a comunicação entre containers;
+
+## Tipos de conexão
+* Os containers constumam ter três principais tipos de comunicação:
+* **Externa**: conexão com uma API de um servidor remoto;
+* **Com o host**: comunicação com a máquina que está executando o Docker;
+* **Entre containers**: comunicação que utiliza o _driver bridge_ e permite a comunicação entre dois ou mais containers;
+
+## Tipos de driver
+* **Bridge**: o mais comum e default do Docker, utilizado quando containers precisam se conectar (na maioria das vezes optamos por este drive);
+* **Host**: permite a conexão entre um container a máquina que está hosteando o Docker;
+* **Macvlan**: permite a conexão a um container por um MAC address;
+* **None**: remove todas as conexões de rede de um container;
+* **Plugins**: permite extensões de terceiros para criar outras redes;
+
+## Listando redes
+* Podemos verificar todas as redes do nosso ambiente com: `docker network ls`;
+* **Algumas redes já estão criadas**, estas fazem parte da configuração inicial do Docker;
+
+## Criando redes
+* Para criar um rede vamos utilizar o comando `docker network create <nome da rede>`;
+* Esta rede será do tipo _bridge_, que é o mais utilizado;
+* Podemos criar diversas redes;
+```bash
+docker network create my-network
+
+docker network ls
+# Criando rede com outro drive
+docker network create -d macvlan my-macvlan-network
+
+docker network ls
+```
+
+## Removendo redes
+* Podemos remover redes com o comando `docker network rm <nome da rede>`;
+* Porém **a rede precisa estar desatrelada de qualquer container**;
+* Podemos utilizar a flag `-f` para forçar a remoção;
+```bash
+docker network ls
+
+docker network rm my-network
+
+docker network ls
+
+docker network rm my-macvlan-network
+```
+
+## Removendo redes em massa
+* Podemos remover todas as redes que não estão sendo utilizadas com o comando `docker network prune`;
+* Desta maneira **todas as redes que não estão sendo utilizadas serão removidas**;
+* Podemos utilizar a flag `-f` para forçar a remoção;
+```bash
+docker network ls
+
+docker network create my-network
+
+docker network ls
+
+docker network prune
+# output
+WARNING! This will remove all networks not used by at least one container.
+Are you sure you want to continue? [y/N] y
+
+docker network ls
+```
+
+## Conexão externa
+* Os containers **podem se conectar livremente ao mundo externo**;
+* Um caso seria: uma API de código aberto;
+* Podemos acessá-la livremente e utilizar seus dados;
+* Vamos testar!
+```bash
+mkdir external-connection
+cd external-connection
+touch Dockerfile
+```
+```Dockerfile
+FROM pyhton:latest
+
+RUN apt-get update -y && apt-get install -y python3-pip pyhton3-dev
+
+WORKDIR /app
+
+RUN pip install flask
+RUN pip install requests
+
+COPY . .
+
+EXPOSE 5000
+
+CMD ["python3", "./app.py"]
+```
+```bash
+touch app.py
+```
+```py
+import flask
+from flask import request, json, jsonify
+import requests
+
+app = flask.Flask(__name__)
+app.config["DEBUG"] = True
+
+@app.route('/', methods=['GET'])
+def index():
+    data = requests.get('https://randomuser.me/api')
+    return data.json()
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", debug=True, port=5000)
+```
+```bash
+docker build -t flask-server .
+
+docker run -d -p 5000:5000 --name flask-container flask-server
+
+## http://localhost:5000/ <= acessar no navegador ou postman
+```
+
+## Conexão com o host
+* Podemos **conectar um container com o host**;
+* Desta maneira o container terá acesso a máquina que está executando o Docker;
+* como ip de host utilizamos: `host.docker.internal`;
+
+## Conexão entre containers
+* Podemos também estabelecer uma **conexão entre containers**;
+* Duas imagens distintas rodando em **containers separados que precisam se conectar para inserir um dado no banco**, por exemplo;
+* Vamos precisar de uma rede **bridge**, para fazer essa conexão;
+* Agora nosso container de flask vai inserir dados em um MySQL que roda pelo Docker também;
+* Vamos primeiro alterar nossa estrutura de pastas:
+```bash
+# Estrutura de pastas
+external-connection/
+├── flask-server/
+│   ├── app.py
+│   └── Dockerfile
+└── mysql-server/
+    ├── Dockerfile
+    └── schema.sql
+```
+Depois de criado as pastas, vamos criar o Dockerfile do MySQL:
+```Dockerfile
+USER mysql:5.7
+
+COPY schema.sql /docker-entrypoint-initdb.d
+
+EXPOSE 3306
+
+VOLUME ["/backup/"]
+```
+Depois de criar o volume, vamos alterar nosso **schema.sql**
+```sql
+CREATE DATABASE flaskdocker;
+USE flaskdocker;
+
+CREATE TABLE `flaskdocker`.`users` (
+    `id` INT NOT NULL AUTO_INCREMENT,
+    `name` VARCHAR(255) NOT NULL,
+    PRIMARY KEY (`id`));
+```
+Agora que o schema e o Dockerfile estão configurados, vamos criar a imagem:
+```bash
+cd mysql-server
+docker build -t mysql-server-network .
+```
+Agora que a build está pronta, vamos criar uma rede para conectar os containers:
+```bash
+docker network create api-network
+```
+Agora que a build e a network já estão configurados, vamos criar o container do MySQL:
+```bash
+docker run -d -p 3306:3306 --name mysql-container --network api-network -e MYSQL_ALLOW_EMPTY_PASSWORD=True mysql-server-network
+# Explicações:
+# -d => modo detached
+# -p => porta do container:porta do host
+# --name => nome do container
+# --network => rede que o container vai utilizar
+# -e => variável de ambiente
+# MYSQL_ALLOW_EMPTY_PASSWORD=True => permite que o container seja iniciado sem senha
+
+```
+Agora vamos alterar nosso **app.py** da api em Flask:
+
+```py
+import flask
+from flask import request, json, jsonify
+import requests
+import flask_mysqldb
+from flask_mysqldb import MySQL
+
+app = flask.Flask(__name__)
+app.config["DEBUG"] = True
+
+app.config['MYSQL_HOST'] = 'mysql-container'	#Nome do container do MySQL é o host já que estão na mesma rede!!
+app.config['MYSQL_USER'] = 'root'
+app.config['MYSQL_PASSWORD'] = ''
+app.config['MYSQL_DB'] = 'flaskdocker'
+
+mysql = MySQL(app)
+
+@app.route('/', methods=['GET'])
+def index():
+    data = requests.get('https://randomuser.me/api')
+    return data.json()
+
+@app.route("/inserthost", methods=['POST'])
+def inserthost():
+  data = requests.get('https://randomuser.me/api').json()
+  username = data['results'][0]['name']['first']
+
+  cur = mysql.connection.cursor()
+  cur.execute("""INSERT INTO users(name) VALUES(%s)""", (username,))
+  mysql.connection.commit()
+  cur.close()
+
+  return username
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", debug=True, port=5000)
+```
+Por ultimo vamos alterar nosso Dockerfile do flask:
+```Dockerfile
+FROM python:3
+
+RUN apt-get update -y && \
+  apt-get install -y python3-pip python3-dev
+
+WORKDIR /app
+
+RUN pip install Flask requests flask_mysqldb
+
+COPY . .
+
+EXPOSE 5000
+
+CMD ["python3", "./app.py"]
+```
+Agora vamos criar a imagem do flask:
+```bash
+cd flask-server
+docker build -t flask-server-network .
+```
+Agora vamos criar o container do flask:
+```bash
+docker run -d -p 5000:5000 --name flask-container --network api-network flask-server-network
+```
+
+## Conectar container
+* Podemos conectar um container a uma rede já existente;
+* Para isso utilizamos o comando `docker network connect <nome da rede> <nome do container>`;
+* Desta maneira o container estará conectado a rede;
+```bash
+docker network ls
+NETWORK ID     NAME                       DRIVER    SCOPE
+f1497256659b   api-network                bridge    local
+
+docker stop flask-container
+docker rm flask-container
+
+docker run -d -p 5000:5000 --name flask-container flask-server-network
+
+docker network connect api-network flask-container
+
+docker network inspect api-network
+```
+
+## Desconectar container
+* Podemos desconectar um container de uma rede;
+* Para isso utilizamos o comando `docker network disconnect <nome da rede> <nome do container>`;
+* Desta maneira o container estará desconectado da rede;
+```bash
+docker network ls
+NETWORK ID     NAME                       DRIVER    SCOPE
+f1497256659b   api-network                bridge    local
+
+docker network disconnect api-network flask-container
+
+docker network inspect api-network
+```
