@@ -363,7 +363,7 @@ docker rmi -f 7ae03f51fdc1
 ```
 
 ## Removendo imagens e containers
-* Com o comando `docker system prude`;
+* Com o comando `docker system prune`;
 * Podemos **remover imagens, containers e networks** não utilizados;
 * O sistema irá exigir uma confirmação para realizar a remoção;
 ```bash
@@ -469,3 +469,287 @@ docker logout
 * Desta maneira a imagem será executada em um container;
 
 # Volumes
+## O que são volumes?
+* Uma **forma de persistir dados** em uma aplicação e não depender de containers para isso;
+* **Todo dado criado por um container é salvo nele**, quando o container é removido, os dados também são;
+* Então precisamos dos volumes para gerenciar os dados e também conseguir **fazer backups** de forma mais simples;
+
+## Tipos de volumes
+* **Anonymous volumes**: Diretórios criados pela **flag -v**, porém com um nome aleatório;
+* **Named volumes**: São volumes com nomes, podemos nos referir a estes facilmente e saber para que são utilizados no nosso ambiente;
+* **Bind mounts**: Uma forma de salvar dados na nossa máquina, sem o gerenciamento do Docker, informamos um diretório para este fim;
+
+## O problema da persistência
+* Se criarmos um container com alguma imagem, **todos os arquivos que geramos dentro dele setão do container**;
+* Quando o container for removido, perderemos estes arquivos;
+* Por isso precisamos dos **volumes**;
+* Vamos criar um exemplo prático com php:
+```bash
+mkdir project-volume
+cd project-volume
+touch Dockerfile
+```
+```Dockerfile
+# Docker
+FROM php:8-apache
+
+WORKDIR /var/www/html
+
+COPY . .
+
+EXPOSE 80
+
+RUN chown -R www-data:www-data /var/www
+```
+```bash
+#prompt
+# Dentro da pasta project-volume
+touch index.php
+touch process.php
+mkdir messages
+```
+```php
+#index.php
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mensagens</title>
+</head>
+<body>
+    <h1>Escreva sua mensagem:</h1>
+    <form action="process.php" method="POST">
+        <input type="text" name="message" id="message" placeholder="Escreva...">
+        <button type="submit">Enviar</button>
+    </form>
+</body>
+</html>
+```
+```php
+# process.php
+<?php
+
+$message = $_POST["message"];
+
+$files = scandir("./messages");
+$num_files = count($files) - 2; // . e ..
+
+$fileName = "msg-{$num_files}.txt";
+
+$file = fopen("./messages/{$fileName}", "x");
+
+fwrite($file, $message);
+
+fclose($file);
+
+header("Location: index.php");
+```
+Agora que o setup está pronto, vamos criar a imagem e executar o container:
+```bash
+docker build -t php-volume:1.0 .
+docker run -d -p 80:80 --name php-container php-volume:1.0
+```
+* Agora podemos acessar no navegador `localhost:80` e enviar mensagens, assim as mensagens serão salvas no container;
+* Porém se removermos o container, as mensagens serão perdidas;
+* Você pode verificar as mensagens na url `localhost/messages/msg-0.txt`;
+
+## Volumes anônimos
+* Podemos criar um volume anônimo da seguinte maneira: `docker run -v /data`
+* Onde **/data** será o diretório que contém o volume anônimo;
+* E este container estará atrelado ao volume anônimo;
+* Com o comando `docker volume ls` podemos verificar os volumes anônimos criados;
+```bash
+docker run -d -p 80:80 --name php-container -v /data php-volume:1.0
+```
+
+## Volumes nomeados
+* Podemos criar um volume nomeado da seguinte maneira: `docker run -v <nome do volume>:/data`
+* Agora o volume tem um nome e pode ser facilmente referenciado;
+* Em `docker volume ls` podemos verificar os volumes nomeados criados;
+* Da mesma maneira que o anônimo, este volume tem como função armazenar arquivos;
+```bash
+docker run -p 80:80 -d --rm --name php-container -v phpvolume:/var/www/html php-volume:1.0
+# Agora podemos ir em localhost:80 e enviar mensagens, elas serão salvas no volume
+
+#parando container e removendo ele
+docker stop php-container
+
+#verificando se o volume ainda existe
+docker volume ls
+# output
+local     phpvolume
+
+# criando um novo container com o mesmo volume
+docker run -p 81:80 -d --rm --name php-container2 -v phpvolume:/var/www/html php-volume:1.0
+
+# agora podemos acessar localhost:81/messages/msg-0.txt e ver as mensagens que enviamos anteriormente
+```
+
+## Bind mounts
+* **Bind mount** também é um volume, porém ele fica em um diretório que nós especificamos;
+* Então não criamos um volume e sim **apontamos para um diretório**;
+* O comando para criar um bind mount é: `docker run -v "/dir/data:/data"`;
+* Desta maneira o diretório **/dir/data** no nosso computador, será o volume deste container;
+```bash
+docker run -d -p 80:80 --name php-container -v "/home/ash/Desktop/Projects/Docker/project-volume/messages":/var/www/html/messages --rm php-volume:1.0
+```
+
+## Atualização do projeto com bind mount
+* **Bind mount** não serve apenas para volumes!
+* Podemos utilizar esta técnica para **atualização em tempo real do projeto**;
+* Sem ter que refazer o build a cada atualização do mesmo;
+* Vamos ver na prática:
+```bash
+# Note que diferente do exemplo anterior, não temos o diretório messages, e sim a raiz do projeto
+docker run -d -p 80:80 --name php-container -v "/home/ash/Desktop/Projects/Docker/project-volume":/var/www/html/ --rm php-volume:1.0
+```
+Agora podemos ir no nosso projeto e alterar o arquivo `index.php`:
+```php
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mensagens</title>
+    <style>
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+        }
+        h1 {
+            text-align: center;
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        input[type=text] {
+            width: 50%;
+            height: 200px;
+            margin-bottom: 20px;
+        }
+        button {
+            width: 100px;
+            height: 30px;
+            border: none;
+            border-radius: 5px;
+            background-color: #000;
+            color: #fff;
+            font-weight: bold;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>Escreva sua mensagem:</h1>
+    <form action="process.php" method="POST">
+        <input type="text" name="message" id="message" placeholder="Escreva...">
+        <button type="submit">Enviar</button>
+    </form>
+    <h2>Hello World</h2>
+</body>
+</html>
+```
+Agora basta dar um F5 na página que o projeto será atualizado!
+
+## Criar um volume
+* Podemos criar volumes manualmente também;
+* Utilizamos o comando: `docker volume create <nome>`
+* Desta maneira temos um **named volume** criado, podemos atrelar a algum container na execução do mesmo;
+```bash
+docker volume create volumetest
+
+docker volume ls
+
+docker run -d -p 80:80 --name php-container -v volumetest:/var/www/html/ --rm php-volume:1.0
+
+# vá no navegador e acesse localhost:80 e crie uma msg
+# acesse a msg em localhost:80/messages/msg-0.txt
+
+docker stop php-container
+
+docker run -d -p 80:80 --name php-container-2 -v volumetest:/var/www/html/ --rm php-volume:1.0
+
+# Verifique que a msg ainda está lá
+# localhost:80/messages/msg-0.txt
+```
+
+## Listar todos os volume
+* Com o comando `docker volume ls` podemos listar todos os volumes;
+* Desta maneira temos acesso a todos os volumes que estão sendo utilizados, **named e anonymous**;
+* Podemos também **verificar informações de um volume específico** com o comando `docker volume inspect <nome do volume>`;
+```bash
+docker volume ls
+# output
+DRIVER    VOLUME NAME
+local     volumetest
+local     phpvolume
+
+docker volume inspect volumetest
+# output
+[
+    {
+        "CreatedAt": "2023-07-26T02:50:49-03:00",
+        "Driver": "local",
+        "Labels": null,
+        "Mountpoint": "/var/lib/docker/volumes/volumetest/_data", # diretório onde o volume está sendo salvo no nosso computador
+        "Name": "volumetest",
+        "Options": null,
+        "Scope": "local"
+    }
+]
+```
+
+## Remover volumes
+* Podemos remover volumes com o comando `docker volume rm <nome do volume>`;
+* Porém **o volume precisa estar desatrelado de qualquer container**;
+* Podemos utilizar a flag `-f` para forçar a remoção;
+* Observe que **os dados serão removidos todos também**, tome cuidado com este comando;
+```bash
+docker volume ls
+
+docker volume rm volumetest
+
+docker volume ls
+# output
+DRIVER    VOLUME NAME
+local     phpvolume
+```
+
+## Remover volumes não utilizados
+* Podemos remover volumes não utilizados com o comando `docker volume prune`;
+* Desta maneira **todos os volumes que não estão sendo utilizados serão removidos**;
+* Podemos utilizar a flag `-f` para forçar a remoção;
+```bash
+docker volume ls
+
+docker volume create volumetest
+docker volume create volumetest2
+docker volume create volumetest3
+docker volume create volumetest4
+
+docker volume ls
+# output
+DRIVER    VOLUME NAME
+local     volumetest
+local     volumetest2
+local     volumetest3
+local     volumetest4
+local     phpvolume
+
+docker volume prune
+# output
+WARNING! This will remove all local volumes not used by at least one container.
+Are you sure you want to continue? [y/N] y
+
+docker volume ls
+# output
+DRIVER    VOLUME NAME
+local     phpvolume
+```
+
+## Volume apenas para leitura
+* Podemos criar um volume que tem **apenas permissão de leitura**, isso é útil em algumas aplicações;
+* Para realizar esta configuração utilizar o comando: `docker run -v volume:/data:ro`;
+* Este **:ro** é a abreviação de **read only**;
