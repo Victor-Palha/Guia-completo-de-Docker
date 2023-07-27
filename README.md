@@ -1039,3 +1039,96 @@ docker network disconnect api-network flask-container
 
 docker network inspect api-network
 ```
+
+# YAML
+## O que é YAML?
+* Uma linguagem de serialização, seu nome é **YAML aind't Markup Language** (YAML não é uma linguagem de marcação);
+* Usada geralmente para arquivos de configuração, inclusive do Docker, para configurar o **Docker Compose**;
+* É de fácil leitura para nós humanos;
+* A extensão dos arquivos é `yml` ou `yaml`;
+
+## Criando nosso primeiro arquivo YAML
+* O arquivo `.yaml` geralmente possui chaves e valores;
+* Que é de onde vamos retirar as configurações do nosso sistema;
+* Para definir uma chave apenas inserimos o nome dela, em seguida colocamos `:` e depois o valor;
+* Vamos criar um arquivo um programa em Python que lê **YAML**:
+```bash
+mkdir YAML
+cd YAML
+touch app.py
+# Caso não tenha o pip3 instalado
+sudo apt install python3-pip
+
+pip3 install pyyaml
+```
+```py
+import yaml
+if __name__ == "__name__":
+    stream = open("test.yaml", "r")
+    dictionary = yaml.safe_load(stream)
+
+    for key, value in dictionary.items():
+        print(key, ":", value)
+```
+Crie um arquivo chamado **test.yaml**:
+```yaml
+nome: "Victor"
+idade: 20
+```
+Agora basta rodar o programa:
+```bash
+python3 app.py
+```
+
+## Espaçamento e indentação
+* O **fim de uma linha** indica o fim de uma instrução, não há ponto e vírgula;
+* A indentação deve conter **um ou mais espaços**, e não devemos utilizar tab;
+* E cada uma define um novo bloco;
+* O **espaço é obrigatório** após a declaração da chave;
+* Para criar comentários, basta colocar `#` no inicio da linha;
+* Vamos ver na prática!
+    * Se não criou o arquivo Python do exemplo anterior, crie;
+```yaml
+# estrutura não válida
+nome:"Victor"
+idade: 20
+
+## para ver o erro execute o programa python
+
+# estrutura válida com indentação
+objeto:
+  versao: 1.0
+  data: 2020-01-01
+  ativo: true
+
+##  rode o programa python para ver o resultado
+
+# Tipos de dados
+# String
+nome: "Victor"
+sobrenome: Hugo
+
+# Inteiro
+idade: 20
+
+# Float
+altura: 1.80
+
+# Boolean
+ativo: Off #ou false
+
+# Listas
+lista:
+  - item1
+  - item2
+  - item3
+
+# Dicionários
+dicionario:
+  chave1: valor1
+  chave2: valor2
+  chave3: valor3
+
+# Nulo
+nulo: null # ou ~
+```
