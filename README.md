@@ -1132,3 +1132,431 @@ dicionario:
 # Nulo
 nulo: null # ou ~
 ```
+
+# Docker Compose
+## O que é Docker Compose?
+* O **Docker Compose** é uma ferramenta para definir e executar aplicações Docker de múltiplos containers;
+* Teremos apenas um arquivo de configuração, que orquestra totalmente esta situação;
+* É uma forma de rodar **múltiplos containers** de uma só vez;
+* Com o **Compose** podemos rodar múltipos `builds e runs` com um comando;
+* Em **projetos maiores** é essencial o uso do Compose;
+
+## Instalando docker compose no Linux
+* **Usuários de Linux** ainda não possuem a ferramente que utilizaremos nesta seção;
+* Vamos seguir as instruções de instalação do site [oficial](https://docs.docker.com/compose/install/);
+* **docker compose** é essencial para atingir o objetivo desta seção;
+
+## Criando nosso primeiro Compose
+* Primeiramente vamos criar um arquivo chamado **docker-compose.yml** na raiz do projeto;
+* Este arquivo vai **coordenar os containers e imagens**, e possui algumas chaves muito utilizadas;
+* `version`: versão do compose;
+* `services`: serviços que serão utilizados;
+* `volumes`: Containers/serviços que vão rodar nesta aplicação
+
+```bash
+mkdir docker-compose
+cd docker-compose
+touch docker-compose.yaml
+docker compose version
+docker compose --help
+```
+```yaml
+version: '3.3' # Versão do compose
+
+services:   # Serviços que serão utilizados
+  db:   # nome do serviço de mysql é "db"
+    image: mysql:5.7 # imagem que será utilizada
+    volumes: # volumes que serão utilizados
+      - db_data:/var/lib/mysql
+    restart: always # sempre que reiniciar o container, ele será reiniciado
+    environment: # variáveis de ambiente
+      MYSQL_ROOT_PASSWORD: wordpress
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: ash
+      MYSQL_PASSWORD: secret
+
+  wordpress: # nome do serviço de wordpress é "wordpress"
+    depends_on: # depende do serviço "db"
+      - db
+    image: wordpress:latest    # imagem que será utilizada
+    ports: # porta que será utilizada
+      - "8000:80"
+    restart: always
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_USER: ash
+      WORDPRESS_DB_PASSWORD: secret
+      WORDPRESS_DB_NAME: wordpress
+
+volumes: # volumes que serão utilizados nos containers
+db_data: {}
+```
+
+## Rodando o Compose
+* Para rodar nossa estrutura em Compose, vamos utilizar o comando: `docker-compose up`;
+* Podemos rodar o Compose em **background** com o comando: `docker-compose up -d`;
+* Isso fará com que as **instruções no arquivo sejam executadas**
+* Da mesma forma que realizamos os builds e runs, o Compose fará isso para nós;
+* Podemos parar o Composer com `Ctrl + C`;
+
+## Parando o Compose
+* Para parar o Compose, basta executar o comando: `docker-compose down`;
+* Isso fará com que os containers sejam parados e removidos;
+* Para remover os volumes também, basta executar o comando: `docker-compose down --volumes`;
+
+## Variáveis de ambiente
+* Podemos utilizar variáveis de ambiente no Compose;
+* Para isso, vamos definir um arquivo base em **env_file**;
+* As váriaveis podem ser chamadas pela sintaxe: `${NOME_DA_VARIAVEL}`;
+* Esta técnica é útil quando o dado a ser inserido é **sensível/não pode ser compartilhada**, como uma senha;
+```bash
+mkdir variaveis
+cd variaveis
+touch docker-compose.yaml
+mkdir config
+cd config
+touch db.env
+touch wp.env
+```
+* Configuração de pastas realizado
+```env
+# wp.env
+
+
+WORDPRESS_DB_HOST=db:3306
+WORDPRESS_DB_USER=ash
+WORDPRESS_DB_PASSWORD=secret
+WORDPRESS_DB_NAME=wordpress
+```
+* Configuração de variáveis de ambiente realizada para o wordpress
+```env
+# db.env
+
+MYSQL_ROOT_PASSWORD=wordpress
+MYSQL_DATABASE=wordpress
+MYSQL_USER=ash
+MYSQL_PASSWORD=secret
+
+```
+* Configuração de variáveis de ambiente realizada para o banco de dados
+```yaml
+version: '3.3'
+
+services:
+  db:
+    image: mysql:5.7
+    volumes:
+      - db-data:/var/lib/mysql
+    restart: always
+    env_file: # arquivo de variáveis de ambiente
+      - ./config/db.env
+
+  wordpress:
+    depends_on:
+      - db
+    image: wordpress:latest
+    ports:
+      - "8000:80"
+    restart: always
+    env_file:
+      - ./config/wp.env
+volumes:
+  db-data: {}  
+```
+* Configuração do docker-compose.yaml realizada
+    * Agora podemos subir nosso compose:
+```bash
+docker-compose up -d
+```
+
+## Redes no Compose
+* O Compose cria uma **rede básica Brigde** entre os containers;
+* Porém podemos isolar as redes com a chave `networks`;
+* Desta maneira podemos conectar apenas os containers que optamos;
+* E podemos **definir drivers diferentes** também;
+```bash
+mkdir networks
+cd networks
+touch docker-compose.yaml
+```
+* **_IMPORTANTE_**, copie o arquivo **db.env** e **wp.env** para a pasta **networks/config**;
+```yaml
+version: '3.3'
+
+services:
+  db:
+    image: mysql:5.7
+    volumes:
+      - db-data:/var/lib/mysql
+    restart: always
+    env_file: # arquivo de variáveis de ambiente
+      - ./config/db.env
+    networks: # redes que serão utilizadas
+      - backend
+
+  wordpress:
+    depends_on:
+      - db
+    image: wordpress:latest
+    ports:
+      - "8000:80"
+    restart: always
+    env_file:
+      - ./config/wp.env
+    networks: # redes que serão utilizadas
+      - backend
+
+volumes:
+  db-data: {}
+networks: # redes que serão inicializadas
+  backend: {}
+    driver: bridge # driver que será utilizado
+
+```
+* Podemos verificar as redes da mesma forma que vimos nas sessões anteriores;
+```bash
+docker network ls
+# Output
+NETWORK ID     NAME                     DRIVER    SCOPE
+1f156e4f1b28   networks_backend         bridge    local
+
+docker network inspect networks_backend
+```
+
+## Vamos incluir o projeto no Compose
+* Agora vamos inserir o nosso projeto da última seção no Compose;
+* Para verificar na prática como fazer uma transferência de **Dockerfile** para o **Docker Compose**!
+* O projeto em questão é o servidor **Flask** que criamos na seção anterior junto com Banco de Dados **MySQL**;
+```bash
+mkdir projeto
+cd projeto
+# Copie os arquivos do projeto anterior para esta pasta
+# flask-server e mysql-server
+mkdir config
+```
+* Agora vamos alterar nossa API em Flask para se adequar ao Compose;
+```py
+import flask
+from flask import request, json, jsonify
+import requests
+import flask_mysqldb
+from flask_mysqldb import MySQL 
+
+app = flask.Flask(__name__)
+app.config["DEBUG"] = True
+
+app.config['MYSQL_HOST'] = 'db' # nome do serviço no compose	
+app.config['MYSQL_USER'] = 'root'
+app.config['MYSQL_PASSWORD'] = ''
+app.config['MYSQL_DB'] = 'flaskdocker'
+
+mysql = MySQL(app)
+
+@app.route('/', methods=['GET'])
+def index():
+    data = requests.get('https://randomuser.me/api')
+    return data.json()
+
+@app.route("/inserthost", methods=['POST'])
+def inserthost():
+  data = requests.get('https://randomuser.me/api').json()
+  username = data['results'][0]['name']['first']
+
+  cur = mysql.connection.cursor()
+  cur.execute("""INSERT INTO users(name) VALUES(%s)""", (username,))
+  mysql.connection.commit()
+  cur.close()
+
+  return username
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", debug=True, port=5000)
+```
+* A primeira alteração que fizemos foi no **host** do banco de dados;
+    * Como estamos utilizando o Compose, o nome do host do banco de dados é o nome do serviço;
+    * No caso, **db**;
+* Agora vamos criar o arquivo **docker-compose.yaml**;
+```yaml
+version: '3.3'
+
+services:
+  db:
+    image: mysqlcompose
+    restart: always
+    env_file:
+      - ./config/db.env
+    ports:
+      - "3306:3306"
+    networks:
+      - dockercompose
+  
+  backend:
+    depends_on:
+      - db
+    image: flaskserver
+    ports: "5000:5000"
+    restart: always
+    networks:
+      - dockercompose
+
+networks:
+  dockercompose:
+    driver: bridge
+```
+* Agora vamos criar o arquivo **db.env** na pasta **config**;
+```env
+MYSQL_ALLOW_EMPTY_PASSWORD=True
+```
+* Agora vamos começar a alterar nosso **Dockerfile** do servidor Mysql;
+```dockerfile
+FROM mysql:5.7
+
+COPY schema.sql /docker-entrypoint-initdb.d/
+
+EXPOSE 3306
+
+# VOLUME ["/backup/"] <Não precisamos passar o volume para esse projeto>
+
+```
+* Todas as configurações foram realizadas nesse ponto, agora só precisamos gerar as builds e subir o compose;
+* Se você perceber no arquivo **docker-compose.yaml** as imagens que estamos utilizando são **mysqlcompose** e **flaskserver**;
+* Então para subir o compose corretamente, precisamos gerar as builds com esses nomes;
+```bash
+cd mysql-server
+docker build -t mysqlcompose .
+
+cd ../flask-server
+docker build -t flaskserver .
+
+cd ..
+docker compose up -d
+```
+* Pronto, tudo funcionando corretamente!
+
+## Build no Compose
+* Podemos realizar o **build durante o Compose** também!
+* Isso vai **eliminar o processo de gerar o build da imagem** a cada alteração;
+* Para isso, basta adicionar a chave **build** no compose;
+```yaml
+version: '3.3'
+
+services:
+  db:
+    build: ./mysql-server # build da imagem
+    restart: always
+    env_file:
+      - ./config/db.env
+    ports:
+      - "3306:3306"
+    networks:
+      - dockercompose
+  
+  backend:
+    depends_on:
+      - db
+    build: ./flask-server # build da imagem
+    ports: 
+      - "5000:5000"
+    restart: always
+    networks:
+      - dockercompose
+
+networks:
+  dockercompose:
+    driver: bridge
+```
+* Podemos fazer uma alteração no código e subir o compose;
+```py
+import flask
+from flask import request, json, jsonify
+import requests
+import flask_mysqldb
+from flask_mysqldb import MySQL 
+
+app = flask.Flask(__name__)
+app.config["DEBUG"] = True
+
+app.config['MYSQL_HOST'] = 'db'	
+app.config['MYSQL_USER'] = 'root'
+app.config['MYSQL_PASSWORD'] = ''
+app.config['MYSQL_DB'] = 'flaskdocker'
+
+mysql = MySQL(app)
+
+@app.route('/', methods=['GET'])
+def index():
+    data = requests.get('https://randomuser.me/api')
+    return data.json()
+
+@app.route("/inserthost", methods=['POST'])
+def inserthost():
+  data = requests.get('https://randomuser.me/api').json()
+  username = data['results'][0]['name']['first']
+
+  cur = mysql.connection.cursor()
+  cur.execute("""INSERT INTO users(name) VALUES(%s)""", (username,))
+  mysql.connection.commit()
+  cur.close()
+
+  return username
+
+# Adicionamos essa rota para listar os hosts inseridos no banco de dados
+@app.route("/listhost", methods=['GET'])
+def listhost():
+  cur = mysql.connection.cursor()
+  cur.execute("""SELECT * FROM users""")
+  rv = cur.fetchall()
+  return jsonify(rv)
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", debug=True, port=5000)
+```
+* Agora podemos subir o compose sem a necessidade de gerar o build antes;
+```bash
+docker compose up -d
+```
+
+## Bind mount no Compose
+* O volume de **Bind mount garante atualização em tempo real dos arquivos do container**
+* Podemos configurar nosso projeto de Compose para utilizar o **Bind mount**;
+* Para isso, vamos alterar o arquivo **docker-compose.yaml**;
+```yaml
+version: '3.3'
+
+services:
+  db:
+    build: ./mysql-server
+    restart: always
+    env_file:
+      - ./config/db.env
+    ports:
+      - "3306:3306"
+    networks:
+      - dockercompose
+  
+  backend:
+    depends_on:
+      - db
+    build: ./flask-server
+    ports: 
+      - "5000:5000"
+    restart: always
+    volumes: # Adicionamos volume e passamos o caminho do projeto : caminho do container que está configurado no Dockerfile
+      - /home/ash/Desktop/Projects/Docker/Compose/projeto/flask-server:/app
+    networks:
+      - dockercompose
+
+networks:
+  dockercompose:
+    driver: bridge
+```
+
+## Verificando o que tem no Compose
+* Podemos fazer a verificação do compose com o comando `docker compose ps`;
+* Recebemos um **resumo dos serviços que sobem** ao rodar o compose;
+* Desta maneira podemos avaliar rapidamente se o compose está funcionando corretamente;
+```bash
+docker compose ps
+```
