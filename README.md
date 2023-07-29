@@ -1560,3 +1560,314 @@ networks:
 ```bash
 docker compose ps
 ```
+
+# Docker Swarm
+## O que é orquestração de containers?
+* Orquestação é o ato de consguir **gerenciar e escalar** os containers da nossa aplicação;
+* Teamos**um serviço que rege sobre outros serviços**, verificando se os mesmos estão funcionando como deveriam;
+* Desta forma conseguimos garantir uma aplicação saudável e também que esteja sempre disponível;
+* Alguns serviços: **Docker Swarm, Kubernetes e Apache Mesos**;
+
+## O que é Docker Swarm?
+* O Docker Swarm é uma **ferramenta nativa do Docker** para **orquestração de containers**;
+* Podemos **escalar horizontalmente** nossos projetos de maneira simples;
+* O famoso **Cluster**!
+* A **facilidade do Swarm** para outros orquestradores é que todos os comandossão muito semelhantes aos do Docker;
+* Toda instalação do Docker já vem com o Swarm, porém precisamos **inicializar o Swarm**;
+
+## Conceitos fundamentais
+* **Nodes**: é uma instância (máquina) que participa do Swarm;
+* **Manager Node**: Node que gerencia os demais Nodes;
+* **Worker Node**: Node que trabalham em função do Manager Node;
+* **Service**: Um conjunto de Tasks que o Manager Node manda o Work node executar;
+* **Task**: Comando que são executados nos Nodes;
+
+## Inicializando o Swarm
+* Para exemplificar corretamente os Swarm, vamos precisar de _Nodes_, ou seja, **mais máquinas**;
+* Então temos duas soluções:
+  * **AWS**, criar a conta e rodar alguns servidores (precisa de cartão de crédito, mas é gratuito);
+  * **Docker Labs**, gratuito também, roda no navegador, porém expira a cada 4 horas;
+
+## AWS
+* Criar uma conta na AWS;
+* Criar 3 instância EC2 chamadas de **Node1, Node2 e Node3**;
+* Escolher a imagem **AMAZON LINUX 2023 AMI**;
+* Escolher o tipo **t2.micro**;
+* Nesse ponto, você deve ter o minimo de conhecimento para criar uma estrutura na AWS;
+* Security Groups
+  * HTTP: 80
+  * SSH: 22
+  * Docker: 2377
+* Criar uma chave SSH e baixar o arquivo .pem;
+* Acessar a instância via SSH;
+* Instalar o Docker;
+```bash
+# Node 1
+ssh -i "SuaChaveSSH.pem" ec2-user@ec2-seu-ip-de-instancia.compute.amazonaws.com
+
+## AWS
+sudo yum update -y
+sudo yum install docker
+sudo service docker start
+sudo usermod -a -G docker ec2-user
+sudo docker swarm init
+# Para sair do docker swarm
+sudo docker swarm leave --force
+```
+* _**NESSE PONTO, VAMOS UTILIZAR SOMENTE AWS PARA CONSTRUIR NOSSA APLICAÇÃO**_
+
+## Iniciando o Swarm
+* Podemos iniciar o Swarm com o comando `docker swarm init`;
+* Em alguns casos precisamos declarar o IP do Node Manager, para isso podemos usar o comando `docker swarm init --advertise-addr <IP>`;
+* Isso fará com que o Node Manager seja iniciado com o IP que passamos;
+```bash
+# Node 1
+ssh -i "SuaChaveSSH.pem" ec2-user@ec2-seu-ip-de-instancia.compute.amazonaws.com
+sudo docker swarm init --advertise-addr <IP> # O IP é o IP da instância e pode ser encontrado no console da AWS
+
+# Nesse ponto ele vai gerar um comando parecido com esse:
+# docker swarm join --token SWMTKN-etx-etx-etx <ip>:2377
+# Salve esse comando em um txt, vamos precisar depois
+```
+
+## Listando Nodes ativos
+* Podemos verificar quais Nodes estão ativos com: `docker node ls`;
+* Desta forma os serviços serão exibidos no terminal;
+* Podemos assim **monitorar o que o Swarm está orquestrando**;
+* Este comando será de grande utilidade a medida que formos adicionando serviços no Swarm;
+```bash
+sudo docker node ls
+```
+
+## Adicionando novos Nodes
+* Podemos adicionar novos Nodes ao Swarm com o comando `docker swarm join --token <TOKEN> <IP>:<PORT>`;
+* O token é gerado quando inicializamos o Swarm;
+* Esta nova máquina entra na hierarquia de Nodes, ou seja, ela é um Worker Node;
+* Todas as ações (**Tasks**) utilizadas na Manager, serão replicadas em Nodes que são Workers;
+* O comando join é gerado quando inicializamos o Swarm, lembre que eu pedi para você salvar o comando em um txt;
+* Caso não tenha salvo, você pode gerar um novo comando com o comando `docker swarm join-token worker`;
+```bash
+# Node 2
+ssh -i "SuaChaveSSH.pem" ec2-user@ec2-seu-ip-de-instancia.compute.amazonaws.com
+
+## AWS
+sudo yum update -y
+sudo yum install docker
+sudo service docker start
+sudo usermod -a -G docker ec2-user
+
+# Nesse ponto, vamos utilizar o comando que salvamos no txt
+sudo docker swarm join --token SWMTKN-etx-etx-etx <ip>:2377
+```
+* Repita o processo para o Node 3;
+* Agora temos 3 Nodes, sendo 1 Manager e 2 Workers;
+
+## Subindo um novo serviço
+* Podemos iniciar um novo serviço com o comando `docker service create --name <NOME> <IMAGE>`;
+* Desta forma teremos um container novo sendo adicionado ao nosso Manager;
+* E este serviço estará sendo gerenciado pelo Swarm;
+* Podemos testar com o ngix, **liberando a porta _80_** o container já estará disponível;
+```bash
+# Node 1
+sudo docker service create --name nginxswarm -p 80:80 nginx
+```
+* Podemos verificar o serviço com o comando `docker service ls`;
+* Desta forma podemos ver o serviço que está rodando no Swarm;
+* Para confirmar, podemos pegar o IP da instancia e acessar no navegador;
+
+## Removendo um serviço
+* Podemos remover um serviço com o comando `docker service rm <NOME>`;
+* Desta maneira o serviço será removido do Swarm;
+* Isso ppode significar: **parar um container que está rodando** e outras consequências devido a parada do mesmo;
+* Checamos a remoção com o comando `docker service ls`;
+```bash
+# Node 1
+sudo docker service ls
+
+sudo docker service rm nginxswarm
+
+sudo docker service ls
+
+```
+
+## Replicando serviços
+* Podemos criar um serviço com um número maior de réplicas: `docker service create --name >NOME> --replicas <NUMERO> <IMAGE>`;
+* Desta maneira uma task será emitida, replicando este serviço nos Workers;
+* Agora iniciamos de fato a **orquestração**;
+* Podemos checar o status com o comando `docker service ls`;
+```bash
+# Node 1
+sudo docker service ls
+
+sudo docker service create --name nginxreplicas --replicas 3 -p 80:80 nginx
+
+sudo docker service ls
+```
+* Desta forma, o Swarm vai replicar o serviço em 3 Workers;
+* Podemos checar com o comando `docker ps`;
+```bash
+# Node 2
+sudo docker ps
+
+# Node 3
+sudo docker ps
+```
+
+## Verificando a orquestração
+* Vamos remover um container de um **Node Worker**;
+* Isso fará com que o Swarm reinicie este container novamente;
+* Pois o serviço ainda está rodando no **Manager**, e isto é uma de suas atribuições: **garantir que os serviços estejam sempre disponíveis**;
+* OBS: precisamos utilizar a flag `--force` para remover o container;
+```bash
+# NODE 3
+sudo docker ps
+
+sudo docker rm -f <ID_CONTAINER>
+
+sudo docker ps
+```
+
+## Checando o Swarm
+* Podemos verificar detalhes do Swarm que o Docker está utilizando;
+* Utilizamos o comando: `docker info`;
+* Desta forma podemos ver detalhes do Swarm;
+* Podemos ver o número de Nodes, se o Swarm está ativo, quantos serviços estão rodando, etc;
+```bash
+# Node 1
+sudo docker info
+```
+
+## Removendo instância do Swarm
+* Podemos remover uma instância do Swarm com o comando `docker swarm leave`;
+* A partir deste momento, o Node não faz mais parte do Swarm;
+* Note que o status do Node muda para **Down**;
+* Podemos checar com o comando `docker node ls`;
+```bash
+# Node 3
+sudo docker swarm leave
+
+# Node 1
+sudo docker node ls
+sudo docker service ls
+ID             NAME            MODE         REPLICAS   IMAGE          PORTS
+u8zky7gwe4jb   nginxreplicas   replicated   4/3        nginx:latest   *:80->80/tcp
+
+# Node que a Replica está rodando
+# Isso porque o Swarm vai replicar o serviço em outro Node, para garantir que o serviço esteja sempre disponível
+sudo docker ps
+# Você vai notar que o container que estava rodando no Node 3, agora está rodando em outro Node, isso pode variar de acordo com o seu Swarm
+# No meu caso ele começou a rodar no Node 1, o mesmo que está rodando o Manager
+```
+
+## Removendo um Node
+* Podemos remover um Node com o comando `docker node rm <ID>`;
+* **Desta forma a instância não será considerada mais um Node do Swarm**;
+* O container continuará rodando na instancia, mas não será gerenciado pelo Swarm;
+* Precisamos utilizar a flag `--force` para remover o Node;
+```bash
+# Node 1
+sudo docker node rm --force <ID>
+```
+
+## Inspecionando serviços
+* Podemos inspecionar um serviço com o comando `docker service inspect <NOME>`;
+* Desta forma podemos ver detalhes do serviço;
+* Podemos ver o número de réplicas, o ID do serviço, o ID do container, etc;
+```bash
+# Node 1
+sudo docker service ls
+
+sudo docker service inspect nginxreplicas
+```
+
+## Verificar containers ativados pelo service
+* Podemos ver quais containers estão rodando em um serviço com o comando `docker service ps <NOME>`;
+* Recebemos uma lista de containers que estão rodando no serviço e também dos que já receberam baixa;
+* Este comando é semelhante ao `docker ps -a`, mas ele é específico para serviços;
+
+## Rodando Compose com Swarm
+* Para rodar Compose com Swarm vamos utilizar os comando de _Stack_;
+* O comando é: `docker stack deploy -c <ARQUIVO.yaml> <NOME>`;
+* Teremos então o **arquivo compose** sendo executado;
+* Porém agora estamos em mode swarm e podemos utilizar os Nodes como réplicas;
+```bash
+# Node 1
+# Primeiro vamos parar o serviço que está rodando
+sudo docker service rm nginxreplicas
+
+# vamos criar nosso arquivo compose
+vim docker-compose.yaml
+# "esc" + ":x!" para salvar e sair
+cat docker-compose.yaml
+```
+* No arquivo vamos colocar o seguinte conteúdo:
+```yaml
+version: '3.3'
+services:
+  nginx:
+    image: nginx
+    ports:
+      - 80:80
+```
+
+```bash
+# node 1
+sudo docker stack deploy -c docker-compose.yaml nginxstack
+sudo docker service ls
+```
+
+## Escalando serviços
+* Podemos criar novas réplicas nos **Worker Node**;
+* Podemos escalar um serviço com o comando `docker service scale <NOME>=<NUMERO>`;
+* Desta forma o Swarm vai enviar uma task de replicar o serviço nos novos Workers;
+```bash
+sudo docker service scale nginxstack_nginx=3
+```
+
+## Fazer serviço não receber mais Tasks
+* Podemos fazer com que um serviço **não receba mais tasks do Manager**;
+* Para isso vamos utilizar o comando: `docker node update --availability drain <ID>`;
+* O status de **drain**, é que não recebe tasks;
+* Podemos voltar para **active**, e ele volta ao normal
+* Utilizamos isso para fazer manutenções em um Node;
+```bash
+# Node 1
+sudo docker node ls
+
+sudo docker node update --availability drain <ID>
+
+sudo docker node ls
+```
+
+## Atualizar parâmetro
+* Podemos atualizar as configurações dos nossos nodes;
+* Vamos utilizar o comando: `docker service update --image <IMAGE> <SERVIÇO>`;
+* Desta forma apenas os nodes que estão com status **active** receberão atualizações;
+
+## Criando rede para Swarm
+* A conexão entre instâncias usa um drive diferente, o **overlay**;
+* Podemos criar primeiramente a rede com o comando: `docker network create --driver overlay <NOME>`;
+* E depois criar um service adicionando a flag `--network <NOME>` para inserir o serviço na rede;
+```bash
+sudo docker service ls
+sudo docker service rm <ID>
+
+sudo docker network create --driver overlay swarm
+
+sudo docker service create --name nginxreplicas --replicas 3 -p 80:80 --network swarm nginx
+```
+
+## Conectar serviço a uma rede
+* Podemos também conectar serviços que já estão em execução a uma rede;
+* Vamos utiizar o comando de update: `docker service update --network-add <REDE> <SERVIÇO>`;
+* Depois checamos o resultado com **inspect**;
+```bash
+sudo docker service ls
+sudo docker service rm <ID>
+
+sudo docker service create --name nginxreplicas --replicas 3 -p 80:80 nginx
+
+sudo docker service ls
+
+sudo docker service update --network-add swarm nginxreplicas
+```
