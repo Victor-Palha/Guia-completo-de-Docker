@@ -1871,3 +1871,603 @@ sudo docker service ls
 
 sudo docker service update --network-add swarm nginxreplicas
 ```
+# Kubernetes
+## O que é Kubernetes?
+* Uma ferramente de **orquestração de containers**;
+* Permite a criação de **múltiplos containers em diferentes máquinas (nodes)**;
+* Escalando projetos, formando um **cluster**;
+* Gerencia serviços, garantido que as aplicações sejam executadas **sempre da mesma forma**;
+* Criada pelo **Google**;
+
+## Cnceitos fundamentais
+* **Control Plane**: Onde é gerenciado o controle dos precessos dos Nodes;
+* **Nodes**: Máquinas que são gerenciadas pelo Control Plane;
+* **Deployment**: A execução de uma imagem/projeto em um Pod;
+* **Pod**: Um ou mais containers que estão em um Node;
+* **Services**: Serviços que expõe os Pods para o mundo externo;
+* **kubectl**: Ferramenta de linha de comando para gerenciar o Kubernetes;
+
+## Dependências necessárias
+* O Kubernets pode ser executado de uma maneira simples em nossa máquina;
+* Vamos precisar do client, **kuberctl**, que é a maneira de interagir com o Kubernetes;
+* E também o **Minikube**, que é uma ferramenta que cria um cluster Kubernetes em uma máquina virtual;
+
+## Kubernetes no Linux
+* No Linux vamos instalar primeiramente o **kubectl**;
+* E Depois também seguiremos a documentação do **Minikube**;
+* Um dos requisitors do Minikube é ter um **gerenciador de VMs/Containers**, como o VirtualBox, Docker, Hiperv;
+* Na próxima sessão vamos inicializar o Minikube;
+* [Documentação Kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl-linux/)
+```bash
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl
+
+curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-archive-keyring.gpg
+
+echo "deb [signed-by=/etc/apt/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+
+sudo apt-get update
+sudo apt-get install -y kubectl
+
+clear
+
+kubeclt version --short
+```
+
+* Agora vamos instalar o Minikube;
+* [Documentação Minikube](https://minikube.sigs.k8s.io/docs/start/)
+```bash
+curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube_latest_amd64.deb
+sudo dpkg -i minikube_latest_amd64.deb
+
+minikube version
+```
+
+## Inicializando Minikube
+* Para inicializar o Minikube vamos utilizar o comando: `minikube start --drive=<DRIVE>`;
+* Onde o driver vai depender de como foi usa instalação das dependências, e por qualquer um deles atigiremos o mesmo resultado;
+* Você pode tentar: **virtualbox**, **docker**, **hyperv**;
+* Podemos testar o Minikube com o comando: `minikube status`;
+```bash
+minikube start --driver=docker
+# Caso não funcione, tente com outro drive ou simplesmente sem o drive
+# miniube start
+minikube status
+```
+* Caso deseje parar o Minikube, utilize o comando: `minikube stop`;
+
+## Acessando a dashborad do Kubernets
+* O Minikube nos disponibiliza uma **dashboard**;
+* Nela podemos ver todo o detalhamento de nosso projeto: **serviços, pods e ect**;
+* Vamos acessar com o comando: `minikube dashboard`;
+* OU para apenas ver o link: `minikube dashboard --url`;
+```bash
+minikube dashboard
+```
+
+## Deployment teoria
+* O **Deployment** é uma parte fundamental do Kubernetes;
+* Com ele criamos nosso serviço que vai rodar nos **Pods**;
+* **Definimos uma imagem e uma nome**, para posteriormente ser replicado entre os Nodes;
+* A partir da criação do deployment teremos containers rodando;
+* Vamos precisar de uma **imagem no Hub do Docker**, para gerar um Deployment;
+
+## Crirar projeto
+* Primeiramente vamos criar um pequeno projeto, novamente em **Flask**;
+* Buildar a **imagem** do mesmo;
+* Enviar para o **Docker Hub**;
+* E testar rodando em um **container**;
+* Este projeto será utilizado no Kubernetes;
+```bash
+mkdir Kubernetes
+cd Kubernetes
+mkdir flask-server
+cd flask-server
+touch app.py
+touch Dockerfile
+mkdir templates
+touch templates/index.html
+```
+* Vamos por partes, primeiro o **app.py**;
+```python
+import flask
+from flask import Flask, render_template
+
+app = flask.Flask(__name__)
+
+app.config["DEBUG"] = True
+
+@app.route('/', methods=['GET'])
+def index():
+    return render_template('index.html')
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", debug=True, port=5000)
+```
+* Agora o **Dockerfile**;
+```dockerfile
+FROM python:3
+
+RUN apt-get update -y && \
+    apt-get install -y python3-pip python3-dev
+
+WORKDIR /app
+
+RUN pip install Flask 
+
+COPY . .
+
+EXPOSE 5000
+
+VOLUME [ "/data" ]
+
+CMD ["python3", "./app.py"]
+```
+* Por fim o **index.html** dentro da pasta **templates**;
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flask com Kubernetes</title>
+</head>
+<body>
+    <h1>Hello Kubernetes!</h1>
+</body>
+</html>
+```
+* OKAY!
+* Setup pronto, vamos buildar a imagem para colocar no Docker Hub;
+```bash
+# Lembre-se de estar na pasta do projeto
+docker build -t <SEU_USER_NO_HUB>/flask-server .
+# Depois de buildar, vamos testar
+docker run -d -p 5000:5000 --name container-test-flask <SEU_USER_NO_HUB>/flask-server
+
+# Para testar, acesse o localhost:5000
+# Para parar o container
+docker stop container-test-flask
+```
+* Se tudo deu certo, vamos enviar para o Docker Hub;
+* Lembre-se de estar logado no Docker Hub;
+* E de ter criado um repositório com o nome **flask-server**;
+* Lembrando que o nome do repositório deve ser o mesmo que colocamos da **imagem**;
+```bash
+docker login
+
+docker push <SEU_USER_NO_HUB>/flask-server
+```
+* Pronto, agora vamos para o Kubernetes;
+
+## Criando Deployment
+* Após este mini setup é hora de rodar nosso projeto no Kubernetes;
+* Para isso vamos precisar de um **Deployment**, que é onde rodamos os containers das aplicações nos **Pods**;
+* O comando é: `kubectl create deployment <NOME> --image=<IMAGEM>`;
+* Desta maneira o projeto de Flask estará sendo orquestrado pelo Kubernetes;
+```bash
+kubectl create deployment flask-deployment --image=<IMAGEM>
+## output
+deployment.apps/flask-deployment created
+```
+* Podemos conferir no minikube dashboard;
+```bash
+minikube dashboard --url
+```
+
+## Checando Deployment
+* Podemos checar se tudo foi criado corretamente, tanto o **Deployment** quannto a recepção do projeto pelo **Pod**;
+* Para verificar o Deployment vamos utilizar: `kubectl get deployments`;
+* E para receber mais detalhes deles: `kubectl describe deployments`;
+* Desta forma conseguimos **saber se o projeto está de fato rodando** e também **o que está rodando nele**;
+```bash
+kubectl get deployments
+## Output
+NAME               READY   UP-TO-DATE   AVAILABLE   AGE
+flask-deployment   1/1     1            1           3m36s
+
+kubectl describe deployments
+```
+
+## Checando Pods
+* Os **Pods** são componentes muito importantes também, onde os containers realmente são executados;
+* Para checar os Pods utilizamos: `kubectl get pods`;
+* E para receber mais detalhes deles: `kubectl describe pods`;
+* Desta forma conseguimos **saber se o projeto está de fato rodando** e também **o que está rodando nele**;
+```bash
+kubectl get pods
+## Output
+NAME                                READY   STATUS    RESTARTS   AGE
+flask-deployment-7b64d7c79b-zxhhd   1/1     Running   0          6m13s
+
+kubectl describe pods
+```
+
+## Configurações do Kubernetes
+* O Kubernetes possui uma série de configurações que podemos fazer;
+* Para ver todas as configurações disponíveis: `kubectl config view`;
+* Para ver as configurações de um contexto específico: `kubectl config view --minify`;
+
+## Services teoria
+* As aplicações do kubernetes **não tem conexão com o mundo externo**;
+* Por isso precisamos criar um **Service**, que é o que possibilita expor os Pods para o mundo externo;
+* Isso acontece pois os **Pods são criados para serem destruídos** e perderem tudo, ou seja, os dados gerados neles também são perdidos;
+* Então o **Service é uma entidade separada dos Pods**, que é responsável por expor os Pods para o mundo externo;
+
+## Criando nosso Service
+* Para criar um serviço e export nossos Pods devemos utilizar o comando: `kubectl expose deployment <NOME_DO_DEPLOYMENT> --type=<TIPO> --port=<PORTA>`;
+* Colocaremos o nome do **Deployment** já criado anteriormente;
+* O **tipo de Service**, há vários para utilizarmos, porém o **LoadBalancer** é o mais utilizado, onde todos os Pods são expostos;
+* E uma **porta** para o serviço ser consumido;
+```bash
+kubectl get deployment
+## Output
+NAME               READY   UP-TO-DATE   AVAILABLE   AGE
+flask-deployment   1/1     1            1           17m
+
+kubectl expose deployment flask-deployment --type=LoadBalancer --port=5000
+## Output
+service/flask-deployment exposed
+```
+* Agora que o serviço foi criado, vamos gerar o ip de acesso;
+* Podemos acessar o nosso serviço com o comando: `minikube service <NOME_DO_SERVICE> --url`;
+* Desta forma o minikube irá gerar um ip para acessarmos o serviço;
+* E pronto, agora podemos acessar o serviço pelo ip gerado;
+```bash
+minikube service flask-deployment --url
+## O output será o ip gerado
+# Você pode apertar CTRL + click no link para abrir no navegador
+```
+
+## Detalhes do Service
+* Podemos ver os detalhes do nosso serviço com o comando: `kubectl get services`;
+* E para ver mais detalhes: `kubectl describe services/<NOME_DO_SERVICE>`;
+```bash
+kubectl get services
+## Output
+NAME               TYPE           CLUSTER-IP       EXTERNAL-IP   PORT(S)          AGE
+flask-deployment   LoadBalancer   10.107.142.195   <pending>     5000:31360/TCP   24m
+kubernetes         ClusterIP      10.96.0.1        <none>        443/TCP          118m
+
+kubectl describe services/flask-deployment
+## Output
+NAME               TYPE           CLUSTER-IP       EXTERNAL-IP   PORT(S)          AGE
+flask-deployment   LoadBalancer   10.107.142.195   <pending>     5000:31360/TCP   25m
+```
+
+## Replicando nossa aplicação
+* Agora que já temos nossa aplicação rodando, podemos replicar ela;
+* Para isso vamos utilizar o comando: `kubectl scale deployment <NOME_DO_DEPLOYMENT> --replicas=<NUMERO_DE_REPLICAS>`;
+* Podemos agora verificar no **Dashboard** do minikube o aumento de Pods;
+* E também com o comando de **Pods** do kubernetes: `kubectl get pods`;
+```bash
+kubectl scale deployment flask-deployment --replicas=5
+## Output
+deployment.apps/flask-deployment scaled
+
+kubectl get pods
+## Output
+NAME                                READY   STATUS    RESTARTS   AGE
+flask-deployment-7b64d7c79b-7wzmr   0/1     ContainerCreating   0          7s
+flask-deployment-7b64d7c79b-bwc2w   0/1     ContainerCreating   0          7s
+flask-deployment-7b64d7c79b-gsxdq   1/1     Running             0          7s
+flask-deployment-7b64d7c79b-kq8n9   1/1     Running             0          7s
+flask-deployment-7b64d7c79b-zxhhd   1/1     Running             0          48m
+```
+
+## Checar número de réplicas
+* Além do get pods e da Dashboard, temos mais um comando para **checar réplicas**;
+* Que é o: `kubectl get rs`;
+* Onde podemos ver o número de réplicas que estão rodando;
+```bash
+kubectl get rs
+## Output
+NAME                          DESIRED   CURRENT   READY   AGE
+flask-deployment-7b64d7c79b   5         5         5       51m
+```
+
+## Diminuindo número de réplicas
+* Para diminuir o número de réplicas, basta utilizar o mesmo comando de **escalar** o número de réplicas;
+* Porém agora colocando um número menor;
+```bash
+kubectl scale deployment flask-deployment --replicas=2
+## Output
+deployment.apps/flask-deployment scaled
+
+kubectl get pods
+## Output
+NAME                                READY   STATUS        RESTARTS   AGE
+flask-deployment-7b64d7c79b-gsxdq   1/1     Running       0          3m
+flask-deployment-7b64d7c79b-kq8n9   1/1     Running       0          3m
+```
+
+## Atualizando a imagem do deployment
+* Para atualizar a imagem do deployment, basta utilizar o comando: `kubectl set image deployment/<NOME_DO_DEPLOYMENT> <NOME_DO_CONTAINER>=<IMAGEM>:<TAG>`;
+* Onde o **nome do container** é o nome que colocamos no arquivo de deployment;
+* E a **imagem** é a imagem que queremos utilizar;
+* E a **tag** é a tag da imagem;
+* Para testar na prática, vamos criar uma nova imagem do nosso projeto;
+* Para isso vamos ir no nosso **index.html** e alterar o texto;
+* E depois vamos criar uma nova imagem com o comando: `docker build -t <NOME_DA_IMAGEM>:<TAG> .`;
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flask com Kubernetes</title>
+    <style>
+        h1{
+            text-align: center;
+            margin-top: 20%;
+        }
+    </style>
+</head>
+<body>
+    <h1>Hello Kubernetes!</h1>
+</body>
+</html>
+```
+* Agora vamos atualizar a imagem do nosso deployment;
+```bash
+docker build -t <SEU_NOME_NO_HUB>/flask-server:v2 .
+docker push <SEU_NOME_NO_HUB>/flask-server:v2
+
+# Podemos ir no Minikube Dashboard para pegar o nome do container
+# Ou podemos utilizar o comando: kubectl describe pods
+# Assim verificamos o nome do container do pod mais antigo, que é nosso manager
+kubectl set image deployment/flask-deployment flask-server=<SEU_NOME>/flask-server:v2
+```
+
+## Rollback da imagem
+* Para fazer o rollback da imagem, basta utilizar o comando: `kubectl rollout undo deployment/<NOME_DO_DEPLOYMENT>`;
+* E para ver o histórico de alterações, basta utilizar o comando: `kubectl rollout history deployment/<NOME_DO_DEPLOYMENT>`;
+* Também podemos verificar uma alteração com o comando: `kubectl rollout status deployment/<NOME_DO_DEPLOYMENT>`;
+```bash
+# Nesse exemplo, vamos fazer uma alteração de imagem para uma imagem que não existe
+kubectl set image deployment/flask-deployment flask-server=<SEU_NOME>/flask-server:v3
+
+# Agora vamos ver os status do deployment
+kubectl get pods
+NAME                                READY   STATUS             RESTARTS   AGE
+flask-deployment-79c8cb4d69-jf49q   0/1     ImagePullBackOff   0          82s #ERROR
+flask-deployment-fb869564d-249q5    1/1     Running            0          6m51s
+flask-deployment-fb869564d-kkg47    1/1     Running            0          6m47s
+
+kubectl rollout undo deployment/flask-deployment
+deployment.apps/flask-deployment rolled back
+
+kubectl rollout status deployment/flask-deployment
+deployment "flask-deployment" successfully rolled out
+
+kubectl get pods
+NAME                                READY   STATUS        RESTARTS   AGE
+flask-deployment-79c8cb4d69-2j4q5   1/1     Running       0          2m
+flask-deployment-79c8cb4d69-jf49q   1/1     Running       0          2m
+```
+
+## Deletar um Service
+* Para deletar um serviço do Kubernetes, basta utilizar o comando: `kubectl delete service <NOME_DO_SERVICE>`;
+* Desta maneira nossos Pods ainda vão estar rodando, porém não vão estar acessíveis;
+* Para deletar um deployment, basta utilizar o comando: `kubectl delete deployment <NOME_DO_DEPLOYMENT>`;
+* Desta maneira nossos Pods também vão ser deletados;
+```bash
+kubectl get services
+NAME               TYPE           CLUSTER-IP       EXTERNAL-IP   PORT(S)          AGE
+flask-deployment   LoadBalancer   10.107.142.195   <pending>     5000:31360/TCP   64m
+kubernetes         ClusterIP      10.96.0.1        <none>        443/TCP          158m
+
+kubectl delete service flask-deployment
+
+kubectl get services
+NAME         TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
+kubernetes   ClusterIP   10.96.0.1    <none>        443/TCP   158m
+
+kubectl get pods
+NAME                               READY   STATUS    RESTARTS   AGE
+flask-deployment-fb869564d-249q5   1/1     Running   0          14m
+flask-deployment-fb869564d-kkg47   1/1     Running   0          14m
+```
+* Agora se tentarmos acessar o nosso serviço, não vamos conseguir;
+* Porém os pods ainda estão rodando;
+* Para deletar os pods, basta utilizar o comando: `kubectl delete deployment <NOME_DO_DEPLOYMENT>`;
+```bash
+kubectl get deployment
+NAME               READY   UP-TO-DATE   AVAILABLE   AGE
+flask-deployment   2/2     2            2           15m
+
+
+kubectl delete deployment flask-deployment
+
+kubectl get deployment
+No resources found in default namespace.
+
+kubectl get pods
+No resources found in default namespace.
+```
+
+## Modo declarativo Teoria
+* Até agora utilizamos o **modo imperativo**, que é quando iniciamos a aplicação com comandos;
+* O **modo declarativo** é guiado por um arquivo, semelhante ao **docker-compose**;
+* Desta maneira tornamos nossas configurações mais simples e **centralizamos tudo em um comando**;
+* Também escrevemos em um arquivo **.yaml**;
+
+## Chaves mais utilizadas
+* **apiVersion**: Versão da API do Kubernetes;
+* **kind**: Tipo de objeto que estamos criando (Deployment, Service, Pod, etc);
+* **metadata**: Metadados do objeto (nome, labels, etc);
+* **replicas**: Quantidade de réplicas que queremos rodar;
+* **containers**: Lista de containers que queremos rodar;
+
+## Criando um arquivo de deployment
+* Agora vamos transformar nosso projeto em **declarativo**;
+* Para isso vamos criar um arquivo para realizar o **Deployment**;
+* Desta maneira vamos aprender a criar os arquivos declarativos e utilizar as **chaves e valores**;
+```bash
+cd kubernetes
+mkdir declarative
+cd declarative
+# Simplesmente copiamos o conteúdo da pasta flask-server
+cp ../flask-server/app.py .
+cp ../flask-server/Dockerfile .
+cp  -r ../flask-server/templates .
+
+touch flask.yaml
+```
+* Agora vamos criar o nosso arquivo **flask.yaml**;
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flask-app-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: flask-app
+  template:
+    metadata:
+      labels:
+        app: flask-app
+    spec:
+      containers:
+        - name: flask
+          image: <seu_nome_no_hub>/<sua_imagem_no_hub>:<tag>
+```
+* Vamos então executar nosso arquivo;
+* O comando para executar um arquivo declarativo é: `kubectl apply -f <NOME_DO_ARQUIVO>`;
+* Desta maneira o Deployment vai ser criado conforme configuramos no arquivo **flask.yaml**;
+```bash
+kubectl apply -f flask.yaml
+deployment.apps/flask-app-deployment created
+
+kubectl get deployment
+NAME                   READY   UP-TO-DATE   AVAILABLE   AGE
+flask-app-deployment   3/3     3            3           2m
+
+kubectl get pods
+NAME                                    READY   STATUS    RESTARTS   AGE
+flask-app-deployment-5f5f8f6f5c-2j4q5   1/1     Running   0          2m
+flask-app-deployment-5f5f8f6f5c-jf49q   1/1     Running   0          2m
+flask-app-deployment-5f5f8f6f5c-kkg47   1/1     Running   0          2m
+```
+* Para parar de executar este deployment baseado em arquivo, o **declarativo**, utilizamos também o delete;
+* O comando para deletar um arquivo declarativo é: `kubectl delete -f <NOME_DO_ARQUIVO>`;
+* Desta maneira teremos os Pods sendo excluídos e o serviço finalizado;
+```bash
+kubectl delete -f flask.yaml
+deployment.apps "flask-app-deployment" deleted
+```
+
+## Criando o serviço
+* Agora vamos criar o serviço para o nosso deployment;
+* Para isso vamos criar o arquivo **flask-service.yaml** para realizar o **Service (kind)**;
+* O arquivo será semelhante ao de Deployment, porém tem uma responsabilidade diferente;
+```bash
+touch flask-service.yaml
+```
+* Vamos então criar o nosso arquivo **flask-service.yaml**;
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: flask-app-service
+spec:
+  selector:
+    app: flask-app # Link entre o service e o deployment
+  ports:
+    - protocol: TCP
+      port: 5000
+      targetPort: 5000
+  type: LoadBalancer
+```
+* Agora para rodar o service;
+* O comando para executar um arquivo declarativo é: `kubectl apply -f <NOME_DO_ARQUIVO>`;
+* Desta maneira o Service vai ser criado conforme configuramos no arquivo **flask-service.yaml**;
+* OBS: precisamos gerar o IP de acesso com o comando `minikube service <NOME_DO_SERVICE>`;
+```bash
+kubectl apply -f flask.yaml
+deployment.apps/flask-app-deployment created
+kubectl apply -f flask-service.yaml
+service/flask-app-service created
+
+minikube service flask-app-service
+```
+* Agora podemos acessar o nosso serviço!
+
+## Parando serviços declarativos
+* Para parar de executar este deployment baseado em arquivo, o **declarativo**, utilizamos também o delete;
+* O comando para deletar um arquivo declarativo é: `kubectl delete -f <NOME_DO_ARQUIVO>`;
+* Desta maneira teremos os Pods sendo excluídos e o serviço finalizado;
+```bash
+kubectl delete -f flask.yaml
+deployment.apps "flask-app-deployment" deleted
+
+kubectl delete -f flask-service.yaml
+service "flask-app-service" deleted
+```
+
+## Atualizando o projeto no declarativo
+* Primeiramente vamos **criar uma nova imagem** para o nosso projeto;
+* Depois fazer o **push** para o **Docker Hub**;
+* Depois é só alterar no arquivo **flask.yaml** a imagem que queremos utilizar;
+* E por fim rodar o comando `kubectl apply -f <NOME_DO_ARQUIVO>` para atualizar o nosso projeto;
+* Simples assim!
+
+## Unindo arquivos do projeto
+* Agora vamos unir os arquivos do nosso projeto em um só;
+* A separação de objetos para o YAML é com `---`;
+* Desta maneira podemos ter um arquivo só para o nosso projeto;
+* Uma boa prática é colocar o **service antes do deployment**;
+```bash
+cd ..
+mkdir union
+cd union-files
+cp ../declarative/app.py .
+cp ../declarative/Dockerfile .
+cp -r ../declarative/templates .
+
+touch flask-project.yaml
+```
+* Vamos então criar o nosso arquivo **flask-project.yaml**;
+```yaml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flask-app-service
+spec:
+  selector:
+    app: flask-app # Link entre o service e o deployment
+  ports:
+    - protocol: TCP
+      port: 5000
+      targetPort: 5000
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flask-app-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: flask-app
+  template:
+    metadata:
+      labels:
+        app: flask-app
+    spec:
+      containers:
+        - name: flask
+          image: ashinx/flask-kub:v2
+```
+* Agoa vamos rodar o nosso projeto;
+```bash
+kubectl apply -f flask-project.yaml
+service/flask-app-service created
+
+minikube service flask-app-service
+```
+* Agora podemos acessar o nosso serviço!
